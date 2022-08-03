@@ -244,9 +244,21 @@ def recent_to_accumulate(scraper, crawling_time):
     with open(cachefile) as cachefilestream:
         j = load(cachefilestream)
         for m in j:
-            m["crawled_at"] = crawling_time
             ts = m["timestamp"][: 10]
             datefile = path.join(cachedir, ts + '.jsonl')
+            dup = False
+            with open(datefile) as f:
+                for line in f:
+                    prev_j = loads(line)
+                    if type(prev_j) is not dict:
+                        continue
+                    del prev_j["crawled_at"]
+                    if m == prev_j:
+                        dup = True
+                        break
+            if dup:
+                continue
+            m["crawled_at"] = crawling_time
             with open(datefile, "a") as fw:
                 fw.write(dumps(m, ensure_ascii=False) + "\n")
 
