@@ -4,6 +4,9 @@
 @license: WTFPL
 """
 
+from os import makedirs, getcwd, path
+import time
+from json import dump, load, dumps
 """
 datetime.timedelta: Used to subtract an entire day from the current one.
 datetime.datetime:  Used to retrieve the current day.
@@ -59,6 +62,51 @@ def getLastMessageGuild(scraper, guild, channel):
     except Exception as ex:
         print(ex)
 
+
+def saveFullMessages(scraper, guild, channel):
+    print("saveFullMessages {0}/{1}".format(guild, channel))
+    # Generate a valid URL to the documented API function for retrieving channel messages (we don't care about the 100 message limit this time).
+    lastmessage = 'https://discord.com/api/{0}/channels/{1}/messages?limit=50'.format(scraper.apiversion, channel)
+
+    # Update the HTTP request headers to set the referer to the current guild channel URL.
+    scraper.headers.update({'Referer': 'https://discord.com/channels/{0}/{1}'.format(guild, channel)})
+
+    try:
+        # Execute the network query to retrieve the JSON data.
+        crawling_time = datetime.now().strftime("%Y%m%d%H%M%S")
+        response = DiscordScraper.requestData(lastmessage, scraper.headers)
+
+        # If we returned nothing then return nothing.
+        if response is None:
+            return None
+        print("Received response")
+        
+        # Read the response data and convert it into a dictionary object.
+        data = loads(response.read())
+
+        if scraper.gatherJSONData:
+            # Create a cache directory.
+            cachedir = path.join(getcwd(), 'cached', scraper.guildname, scraper.channelname)
+
+            # Check if it already exists, if not then create it.
+            if not path.exists(cachedir):
+                makedirs(cachedir)
+
+            # Generate the direct file name for the cachefile.
+            cachefile = path.join(cachedir, 'recent.cache.json')
+
+            # Open the cachefile for appending textual data.
+            with open(cachefile, 'w') as cachefilestream:
+                
+                # Write the JSON data directly to the file.
+                dump(data, cachefilestream, indent=4)
+            print("dumped", len(data), "data")
+            return crawling_time
+
+    except Exception as ex:
+        print(ex)
+
+
 def startDM(scraper, alias, channel, day=None):
     """
     The initialization function for the scraper script to grab direct message contents.
@@ -87,6 +135,8 @@ def startGuild(scraper, guild, channel, day=None):
 
     # Update the HTTP request headers to set the referer to the current guild channel URL.
     scraper.headers.update({'Referer': 'https://discord.com/channels/{0}/{1}'.format(guild, channel)})
+
+    time.sleep(3)
 
     try:
         # Generate the guild name.
@@ -143,6 +193,7 @@ def startGuild(scraper, guild, channel, day=None):
                         
                 except:
                     pass
+                time.sleep(3)
             
 
         # Cache the JSON data if there's anything to cache (don't fill the cache directory with useless API response junk).
@@ -179,12 +230,26 @@ def start(scraper, guild, channel, day=None):
         day = datetime.today()
 
     # Determine if the year is no less than 2015 since any time before this point will be guaranteed invalid.
-    if day.year <= 2014:
+    if day.year <= 2021:
         exit(0)
         
     # The smallest snowflake that Discord recognizes is from January 1, 2015.
-    while day > datetime(2015, 1, 1):
+    while day > datetime(2022, 1, 1):
         day = startGuild(scraper, guild, channel, day)
+
+
+def recent_to_accumulate(scraper, crawling_time):
+    cachedir = path.join(getcwd(), 'cached', scraper.guildname, scraper.channelname)
+    cachefile = path.join(cachedir, 'recent.cache.json')
+    with open(cachefile) as cachefilestream:
+        j = load(cachefilestream)
+        for m in j:
+            m["crawled_at"] = crawling_time
+            ts = m["timestamp"][: 10]
+            datefile = path.join(cachedir, ts + '.jsonl')
+            with open(datefile, "a") as fw:
+                fw.write(dumps(m, ensure_ascii=False) + "\n")
+
 
 if __name__ == '__main__':
     """
@@ -203,8 +268,15 @@ if __name__ == '__main__':
             # Retrieve the datetime object for the most recent post in the channel.
             lastdate = getLastMessageGuild(discordscraper, guild, channel)
 
+            discordscraper.grabGuildName(guild)
+            discordscraper.grabChannelName(channel)
+            crawling_time = saveFullMessages(discordscraper, guild, channel)
+
+            # @CAQ I think recent messages are useful enough, so simply store them permanently. Thus no need scrape everything backwards.
+            recent_to_accumulate(discordscraper, crawling_time)
+
             # Start the scraper for the current channel.
-            start(discordscraper, guild, channel, lastdate)
+            #start(discordscraper, guild, channel, lastdate)
     
     # Iterate through the direct messages to scrape.
     for alias, channel in discordscraper.directs.items():

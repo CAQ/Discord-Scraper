@@ -123,7 +123,7 @@ class DiscordScraper(object):
         if apiversion is None:
             
             # Set it to the default value of "v8"
-            apiversion = 'v8'
+            apiversion = 'v9'
         
         # Generate a direct file path to the configuration file.
         configfile = path.join(getcwd(), configfile)
